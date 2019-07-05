@@ -1,0 +1,200 @@
+
+
+
+<head>
+  <title>Flights Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.js"></script>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.7.3/socket.io.js"></script>
+
+  <script type = "text/javascript">
+     var flights = {}
+     var first1 = false;
+     var first2 = false;
+     var socket = io("wss://integracion-tarea-4.herokuapp.com", {path: '/flights'}, {transports: ['websocket']});
+
+
+     function WebSocketTest2() {
+
+        socket.emit("AIRPORTS");
+        socket.emit("FLIGHTS");
+
+     }
+
+     function WebSocketTest() {
+         socket.on('AIRPORTS', (data) => {
+            console.log(data);
+            if(first1 == false){
+            first1 = true;
+            addAirports(data);
+            }
+         });
+
+         socket.on('FLIGHTS', (data) => {
+            console.log(data);
+            if(first2 == false){
+            first2 = true;
+            initFlights(data);
+            }
+          });
+
+         socket.on('POSITION', (data) => {
+            console.log(data);
+            addMarker2(data["code"], data["position"][0], data["position"][1]);
+            if(first1 == false){
+            WebSocketTest2();
+            }
+
+          });
+
+      }
+
+
+
+  </script>
+
+</head>
+
+<body>
+
+
+  <!-- Aquí va el mapa. -->
+
+  <div id="map" style="height: 100%; width: 100%;"></div>
+  <script type="text/javascript">
+
+    WebSocketTest();
+
+    // The first parameter are the coordinates of the center of the map
+    // The second parameter is the zoom level
+    var map = L.map('map').setView([-38.643, -72.299], 5);
+
+    // {s}, {z}, {x} and {y} are placeholders for map tiles
+    // {x} and {y} are the x/y of where you are on the map
+    // {z} is the zoom level
+    // {s} is the subdomain of cartodb
+      var layer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="http://cartodb.com/attributions">CartoDB</a>'
+    });
+
+    // Now add the layer onto the map
+    map.addLayer(layer);
+
+    var PlaneBase = 'https://img.icons8.com/color/48/000000/airplane-front-view.png';
+    var AirportBase = "https://img.icons8.com/ios-glyphs/30/000000/place-marker.png";
+    var positions = {};
+    var markers = {};
+
+    var airportIcon = L.icon({
+      iconUrl: AirportBase,
+      iconSize: [25, 25]
+    });
+
+    var airplaneIcon = L.icon({
+      iconUrl: PlaneBase,
+      iconSize: [30, 50]
+    });
+
+    function addAirports(data){
+      for(var code in data){
+        var lat = data[code]["airport_position"][0]
+        var long = data[code]["airport_position"][1]
+        var marker = L.marker([lat, long], {icon: airportIcon}).addTo(map).bindPopup(InfoAeropuerto(data[code]));
+
+      }
+    }
+
+    function initFlights(data){
+      for(let i = 0; i < data.length; i++) {
+        var aux = {};
+        aux["airline"] = data[i]["airline"];
+        aux["plane"] = data[i]["plane"];
+        aux["seats"] = data[i]["seats"];
+        flights[data[i]["code"]] = aux;
+
+        var origin = data[i]["origin"]["airport_position"]
+        var destiny = data[i]["destination"]["airport_position"]
+
+        var pointA = new L.LatLng(origin[0], origin[1]);
+        var pointB = new L.LatLng(destiny[0], destiny[1]);
+        var pointList = [pointA, pointB];
+
+        var firstpolyline = new L.Polyline(pointList, {
+          color: 'green',
+          weight: 3,
+          opacity: 0.5,
+          smoothFactor: 1
+        });
+
+        map.addLayer(firstpolyline);
+
+      }
+
+    }
+
+    function addMarker2(vuelo, lat, long){
+      if (positions[vuelo] != undefined) {
+
+        var pointA = new L.LatLng(positions[vuelo][0], positions[vuelo][1]);
+        var pointB = new L.LatLng(lat, long);
+        var pointList = [pointA, pointB];
+
+        var firstpolyline = new L.Polyline(pointList, {
+          color: 'red',
+          weight: 3,
+          opacity: 0.5,
+          smoothFactor: 1
+        });
+
+        map.addLayer(firstpolyline);
+        positions[vuelo] = [lat, long];
+        markers[vuelo].setLatLng(pointB);
+        markers[vuelo]._popup.setContent(InfoVuelo(vuelo));
+
+      } else {
+      positions[vuelo] = [lat, long]
+      var marker = L.marker([lat, long], {icon: airplaneIcon}).addTo(map).bindPopup(InfoVuelo(vuelo));
+      markers[vuelo] = marker
+      }
+    }
+
+    function InfoVuelo(vuelo){
+      if (flights[vuelo] != undefined){
+      var info = "";
+      info += "<dt>Flight ID: " + vuelo + "</dt>";
+      info += "<dt>Plane: " + flights[vuelo]["plane"] + "</dt>";
+      info += "<dt>Capacity: " + flights[vuelo]["seats"] + "</dt>";
+      info += "<dt>Aerolínea: " + flights[vuelo]["airline"] +"</dt>";
+      info +=  "<dt>Posición: " + positions[vuelo][0] + " " + positions[vuelo][1] + "</dt>"
+
+      } else {
+      var info = "";
+      info += "<dt>Flight ID: </dt>";
+      info += "<dt>Plane: </dt>";
+      info += "<dt>Capacity: </dt>";
+      info += "<dt>Aerolínea: </dt>";
+      info +=  "<dt>Posición: " + positions[vuelo][0] + " " + positions[vuelo][1] + "</dt>"
+      }
+      return info;
+    }
+
+    function InfoAeropuerto(data){
+
+      var info = "";
+      info += "<dt>Airport Name: " + data["name"] + "</dt>";
+      info += "<dt>Airport Code: " + data["airport_code"] + "</dt>";
+      info += "<dt>City: " + data["city"] + "</dt>";
+      info += "<dt>Country: " + data["country"] + "</dt>";
+      info += "<dt>Country Code: " + data["country_code"] +"</dt>";
+      info +=  "<dt>Posición: " + data["airport_position"][0] + " " + data["airport_position"][1] + "</dt>"
+
+      return info;
+    }
+
+  </script>
+
+</body>
+
+
